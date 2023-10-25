@@ -1,0 +1,203 @@
+---
+title: "homework3_rastermap"
+author: "Fitrah Ramadhan"
+date: "2023-10-18"
+output: html_document
+---
+\\
+
+### **PROBLEM STATEMENT**
+1. The task is to manipulate some raster data and produce some descriptive statistics.\
+2.1. For any country in the World: I choose United Kingdom
+2.2. produce descriptive statistics that show the difference in maximum annual temperature for United Kingdom's key cities (delta tx) between SSP1 (SSP126) and SSP5 (SSP585) 
+3.4. for the years 2081-2100
+3.5. using any model and resolution (UKESM1).
+\\
+
+### **LOADING NECESSARY PACKAGES**
+```{r}
+
+library(tidyverse) #to do data frame/tibble wrangling
+library(sf) #to do spatial data generation and manipulation
+library(terra) #same as sf, but I think it is more specialized for raster data
+library(raster) #same with terra
+library(tibble) #convert dataframe to tibble
+library(ggplot2)
+library(plotly)
+library(here)
+
+```
+
+### **UPLOAD DATA**
+```{r}
+
+#cities identity data
+cities_map <- st_read(here("data/week3", "World_Cities.shp"))
+cities_map <- cities_map %>%
+  filter(str_detect(CNTRY_NAME, "United Kingdom")) %>%
+  dplyr::select("CITY_NAME") 
+
+#generate XY columns to extract tx in key cities
+cities_coord <- as_tibble(st_coordinates(cities_map$geometry)) %>%
+  dplyr::mutate(city = cities_map$CITY_NAME) %>%
+  tibble::column_to_rownames(., var='city')
+
+#united kingdom outline
+st_layers(here("data/week3", "gadm41_GBR.gpkg"))
+ukoutline_city <- st_read(here("data/week3", "gadm41_GBR.gpkg"), layer="ADM_ADM_4") %>% 
+  group_by(NAME_2) %>% 
+  summarize(geometry = st_union(geom))
+
+#generate outline for uk
+ukoutline_country <- ukoutline_city %>%
+  summarize(st_union(geometry))
+
+#generate outline for each cities
+ukoutline_key_city <- ukoutline_city %>%
+  filter(str_detect(NAME_2, paste(rownames(cities_coord), collapse="|")))
+
+#world climate data
+month_tmax <- c("tmax_Jan", 
+           "tmax_Feb", 
+           "tmax_Mar", 
+           "tmax_Apr", 
+           "tmax_May", 
+           "tmax_Jun", 
+           "tmax_Jul", 
+           "tmax_Aug", 
+           "tmax_Sep", 
+           "tmax_Oct", 
+           "tmax_Nov", 
+           "tmax_Dec")
+
+tmax_p126 <- terra::rast(here("data/week3", "wc2.1_2.5m_tmax_UKESM1-0-LL_ssp126_2081-2100.tif"))
+names(tmax_p126) <- month_tmax
+
+tmax_p585 <- terra::rast(here("data/week3", "wc2.1_2.5m_tmax_UKESM1-0-LL_ssp585_2081-2100.tif"))
+names(tmax_p585) <- month_tmax
+```
+
+### **MANIPULATE CLIMATE DATA BY CITY (PIVOT WIDE): TO OBTAIN DELTA TX EACH MONTHS IN EACH CITIES**
+```{r}
+
+#UK Tx P126 in the wide form
+UK_tmax_p126_month_wide <- terra::extract(tmax_p126,cities_coord) %>%
+  dplyr::mutate(city = cities_map$CITY_NAME, .after=ID) %>%
+  tibble::column_to_rownames(., var='city')
+
+#UK Tx P585 in the wide form
+UK_tmax_p585_month_wide <- terra::extract(tmax_p585,cities_coord) %>%
+  dplyr::mutate(city = cities_map$CITY_NAME, .after=ID) %>%
+  tibble::column_to_rownames(., var='city')
+
+#Get the delta of Tx in each months in each cities
+UK_tmax_delta_month <- round(as.data.frame(data.matrix(UK_tmax_p585_month_wide[2:13]) - data.matrix(UK_tmax_p126_month_wide[2:13])), digit=2)
+
+```
+
+### **MANIPULATE CLIMATE DATA BY CITY (PIVOT LONG): TO OBTAIN DELTA TX ANNUALLY IN EACH CITIES**
+```{r}
+
+#UK Tx P126 in the long form for each month
+UK_tmax_p126_month_long <- terra::extract(tmax_p126,cities_coord) %>%
+  dplyr::mutate(city = cities_map$CITY_NAME, .after=ID) %>%
+  pivot_longer(cols=3:14, names_to= "Month", values_to = "tmax") 
+
+#UK Tx P126 in the long form annually
+UK_tmax_p126_annual <- UK_tmax_p126_month_long %>%
+  group_by(city) %>%
+  summarise(mean_tmax_p126 = round(mean(tmax), digit=3))
+
+#UK Tx P585 in the long form for each month
+UK_tmax_p585_month_long <- terra::extract(tmax_p585,cities_coord) %>%
+  dplyr::mutate(city = cities_map$CITY_NAME, .after=ID) %>%
+  pivot_longer(cols=3:14, names_to= "Month", values_to = "tmax") 
+
+#UK Tx P585 in the long form annually
+UK_tmax_p585_annual <- UK_tmax_p585_month_long %>%
+  group_by(city) %>%
+  summarise(mean_tmax_p585 = round(mean(tmax), digit=3))
+
+#Get the delta of Tx annually in each cities
+UK_tmax_delta_annual <- UK_tmax_p126_annual %>%
+  left_join(., UK_tmax_p585_annual, by='city') %>%
+  dplyr::mutate(delta_tmax = mean_tmax_p585 - mean_tmax_p126)
+
+```
+
+### **DESCRIPTIVE STATISTICS FOR KEY CITIES IN UK (COMPARISON)**
+```{r}
+
+#DEFINE FUNCTION TO GENERATE DESC_STATISTICS
+desc_statistics_cities <- function(i) {
+  
+  ##PRODUCE MAPS
+  city_tmax_p126_map <- mean(terra::crop(tmax_p126, ukoutline_key_city[i,]))
+  city_tmax_p585_map <- mean(terra::crop(tmax_p585, ukoutline_key_city[i,]))
+  city_tmax_diff_map <- city_tmax_p585_map - city_tmax_p126_map
+  city_name <- as.character(ukoutline_key_city$NAME_2[i])
+  title_string_diff <- paste("Map of Annual Delta Tx-P585 & Tx-P126 in", city_name, "for 2081-2100")
+  plot(city_tmax_diff_map, main = title_string_diff)
+  names(city_tmax_diff_map) <- city_name
+  
+  ##PRODUCE HISTOGRAM COMPARISON BETWEEN TX-P126 & TX-P585
+  
+  ###data
+  tx_p126 <- as.data.frame(mean(terra::crop(tmax_p126, ukoutline_key_city[i,])))
+  tx_p585 <- as.data.frame(mean(terra::crop(tmax_p585, ukoutline_key_city[i,])))
+  data <- data.frame(tx_p126 = tx_p126$mean, tx_p585 = tx_p585$mean)
+  
+  ###Create overlay histograms with plotly
+  histogram_cities <- plot_ly(data) %>%
+    add_histogram(x = ~tx_p126, name = 'tx_p126', opacity = 0.5) %>%
+    add_histogram(x = ~tx_p585, name = 'tx_p585', opacity = 0.5) %>%
+    layout(
+      title = paste("Histogram of Annual Delta Tx-P585 & Tx-P126 in", city_name, "for 2081-2100"),
+      xaxis = list(title = "Temperature"),
+      yaxis = list(title = "Frequency"),
+      barmode = 'overlay')
+  
+  print(histogram_cities)
+      
+}
+
+#PRINT THE DESCRIPTION FOR EACH CITIES
+for (i in 1: nrow(ukoutline_key_city)) {desc_statistics_cities(i)}
+
+
+```
+
+### **DESCRIPTIVE STATISTICS IN UK (COMPARISON)**
+```{r}
+
+#PRODUCE DELTA MAP
+UK_tmax_p126_map <- mean(terra::crop(tmax_p126, ukoutline_country))
+UK_tmax_p585_map <- mean(terra::crop(tmax_p585, ukoutline_country))
+UK_tmax_diff_map <- UK_tmax_p585_map - UK_tmax_p126_map
+plot(UK_tmax_p126_map, main = paste("Map of Annual Tx-P126 in UK for 2081-2100"))
+plot(UK_tmax_p585_map, main = paste("Map of Annual Tx-P585 in UK for 2081-2100"))
+plot(UK_tmax_diff_map, main = paste("Map of Annual Delta Tx-P585 & Tx-P126 in UK for 2081-2100"))
+
+#PRODUCE COMPARISON HISTOGRAM
+##data
+tx_p126 <- as.data.frame(mean(terra::crop(tmax_p126, ukoutline_country)))
+tx_p585 <- as.data.frame(mean(terra::crop(tmax_p585, ukoutline_country)))
+data_hist <- data.frame(tx_p126 = tx_p126$mean, tx_p585 = tx_p585$mean)
+  
+##Create overlay histograms with plotly
+histogram_uk <- plot_ly(data_hist) %>%
+  add_histogram(x = ~tx_p126, name = 'tx_p126', opacity = 0.5) %>%
+  add_histogram(x = ~tx_p585, name = 'tx_p585', opacity = 0.5) %>%
+  layout(
+    title = paste("Histogram of Annual Delta Tx-P585 & Tx-P126 in UK for 2081-2100"),
+    xaxis = list(title = "Temperature"),
+    yaxis = list(title = "Frequency"),
+    barmode = 'overlay')
+  
+
+print(histogram_uk)
+
+```
+
+## **DONE AND DUSTED! OUT OF THIS WORLD**
+# INI BAHASA INDONESIA UNTUK KAMU: TERIMA KASIH SUDAH DATANG KEMARI

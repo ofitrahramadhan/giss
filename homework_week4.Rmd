@@ -1,0 +1,163 @@
+---
+title: "HOMEWORK 4: GIT, GITHUB, RMARKDOWN"
+author: "Fitrah Ramadhan"
+date: "2023-10-22"
+output: html_document
+---
+-------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------
+
+Hello everyone! This work would be dedicated to the practical 4 of GIS class which mainly talk about the use of **git, github, and rmarkdown**.
+
+-------------------------------------------------------------------------------------------------
+
+**Thus, the following goals are set for this practical:**\
+1. Create a map that shows the difference of global inequality index between 2010-2019;\
+2. Share it to my github repository; and\
+3. Add the github URL to the circulated spreadsheet.
+
+-------------------------------------------------------------------------------------------------
+
+**To do this task, these following data are directed to use:**\
+1. [Global Gender Inequality Data](https://hdr.undp.org/data-center/documentation-and-downloads)\
+2. [World Map](https://hub.arcgis.com/datasets/2b93b06dc0dc4e809d3c8db5cb96ba69_0/explore)
+
+-------------------------------------------------------------------------------------------------
+
+**As for the steps in answering the goals, we can see them below:**\
+1. Setting the Directory\
+2. Load Libraries\
+3. Import and Manipulate Data\
+4. Plot the Map\
+5. Descriptive Statistics\
+6. Save the Output to the Geodatabase
+
+
+-------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------
+
+
+### **1. SETTING THE DIRECTORY**
+```{r directory, echo=TRUE}
+
+# place for accessing data
+data_week4 <- "D:/0. Master/Data/giss/week4"
+
+```
+-------------------------------------------------------------------------------------------------
+
+### **2. LOAD LIBRARIES**
+```{r library, echo=TRUE}
+
+library(tidyverse) #data wrangling
+library(sf) #spatial data processor
+library(countrycode) #convert country code
+library(tmap) #spatial data visualization
+library(ggplot2) #data visualization
+library(plotly) #interactive histogram
+library(RSQLite) #for creating geodatabase
+
+```
+-------------------------------------------------------------------------------------------------
+
+### **3. IMPORT AND MANIPULATE DATA**
+```{r data, echo=TRUE}
+
+#import global inequality index (gii)
+world_gii <- read_csv("D:/0. Master/Data/giss/week4/HDR21-22_Composite_indices_complete_time_series.csv") %>%
+  #select only necessary columns
+  dplyr::select(c("iso3", "country", "region", "gii_2010", "gii_2019")) %>%
+  #create new column called delta_gii (difference of gii between 2010 and 2019)
+  dplyr::mutate(delta_gii = gii_2019 - gii_2010)
+
+#import world map
+world_map <- st_read("D:/0. Master/Data/giss/week4/World_Countries_Generalized.gdb") %>%
+  #convert iso2 column to become iso3 (to make it identical with world_gii table)
+  dplyr::mutate(iso3 = countrycode(ISO, origin='iso2c', destination='iso3c'), .before=ISO) %>%
+  #join world_map and world_gii by - iso3
+  dplyr::left_join(., world_gii,  by="iso3") %>%
+  #throw out redundant and unnecessary columns
+  dplyr::select(c("COUNTRY", "iso3", "ISO", "region", "gii_2010", "gii_2019", "delta_gii", "SHAPE")) %>%
+  #create categoric variable based on the value of delta_gii
+  dplyr::mutate(higher_lower = case_when(
+    delta_gii > 0 ~ "Increased",
+    delta_gii == 0 ~ "Constant",
+    delta_gii < 0 ~ "Decreased",
+    is.na(delta_gii) ~ "No Data"
+  ))
+  
+```
+-------------------------------------------------------------------------------------------------
+
+### **4. PLOT THE MAP**
+```{r map, echo=TRUE}
+
+#plotting the map with tmap function
+delta_gii_map <- tm_shape(world_map) +
+  #setting the legend
+  tm_fill("higher_lower", title = "Delta GII 2010-2019",
+        palette = c("yellow", "green", "red", "gray")) +
+  #create outer border for the map
+  tm_borders() +
+  #setting the layout of the map
+  tm_layout("Change in Global Inequality Index from 2010 to 2019",
+            legend.title.size = 1,
+            legend.text.size = 0.6,
+            legend.position = c("left","center"),
+            legend.bg.color = "transparent",
+            legend.bg.alpha = 1)
+  
+#print the map
+print(delta_gii_map)
+
+```
+-------------------------------------------------------------------------------------------------
+
+### **5. DESCRIPTIVE STATISTICS**
+```{r echo=TRUE}
+
+##Create overlay histograms with plotly
+histogram_gii <- plot_ly(world_map) %>%
+  add_histogram(x = ~gii_2010, name = 'gii_2010', opacity = 0.5) %>%
+  add_histogram(x = ~gii_2019, name = 'gii_2019', opacity = 0.5) %>%
+  layout(
+    title = paste("Global Inequality Index in 2010 and 2019"),
+    xaxis = list(title = "GII Index"),
+    yaxis = list(title = "Frequency"),
+    barmode = 'overlay')
+  
+print(histogram_gii)
+
+```
+-------------------------------------------------------------------------------------------------
+
+### **6. SAVE THE OUTPUT TO THE GEODATABASE**
+```{r echo=TRUE}
+
+#Write geopackage
+world_map %>%
+  #write shape to new geopackage
+  st_write(., "D:/0. Master/Data/giss/week4/export_week4.gpkg", 
+           "world_gii_map", 
+           delete_layer = TRUE)
+
+#Connect into database
+con <- dbConnect(RSQLite::SQLite(),dbname="export_week4.gpkg")
+
+#See inside database
+con %>% 
+  dbListTables()
+
+#Add csv into geopackage
+con %>%
+  dbWriteTable(.,
+               "world_gii.csv",
+               world_map,
+               overwrite=TRUE)
+
+#Disconnect from geopackage
+con %>% 
+  dbDisconnect()
+
+```
+

@@ -1,0 +1,153 @@
+---
+title: "HOME WORK #2"
+author: Fitrah Ramadhan
+output: html_document
+date: "2023-10-13"
+---
+\
+\
+
+### **PROBLEM STATEMENT**
+**This worksheet is dedicated for homework 2 of Geographic Information System and Science (GISS) module in CASA. The purpose of this homework are:** \
+1. The need to calculate the average percent of science students (in all) grades per county meeting the required standards; and \
+2. Produce a map to show where the County averages are above or below the State of Washington average.\
+\
+
+### **DATA REQUIRED**
+**The data for answering the purpose could be accessed in the following link:** \
+[1. Washington Counties Map](https://hub.arcgis.com/datasets/kingcounty::washington-counties-with-natural-shoreline-washsh-area/explore?location=47.272700%2C-120.740400%2C7.67)\
+[2. School Report Card Data](https://data.wa.gov/education/Report-Card-Assessment-Data-2018-19-School-Year/5y3z-mgxd)\
+\
+
+### **WORKFLOW TO ANSWER THE PROBLEM**
+![Alt text](C:/Users/USER/Documents/casa/gis/week2/week2_img/workflow2.png)
+\
+\
+
+### **CODE**
+\
+
+#### 1. DEFINING THE DIRECTORY VARIABLE
+```{r}
+
+wd_script <- "C:/Users/USER/Documents/casa/gis/week2/week2_script"
+wd_data <- "C:/Users/USER/Documents/casa/gis/week2/week2_data"
+wd_img <- "C:/Users/USER/Documents/casa/gis/week2/week2_img"
+
+```
+\
+
+#### 2. LOAD PACKAGE
+```{r}
+
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(tibble)
+library(tidyr)
+library(janitor)
+library(sf)
+library(tmap)
+library(tmaptools)
+library(RSQLite)
+
+```
+\
+
+#### 3. IMPORT DATA
+```{r}
+
+map <- st_read("C:/Users/USER/Documents/casa/gis/week2/week2_data/Washington_Counties_with_Natural_Shoreline___washsh_area.shp")
+school <- read_csv2("C:/Users/USER/Documents/casa/gis/week2/week2_data/Report_Card_Assessment_Data_2018-19_School_Year_20231013.csv", 
+                    col_names=TRUE, 
+                    locale=locale(encoding='latin1'),
+                    na=c("n/a","NULL"))
+
+```
+\
+
+#### 4. MANIPULATE SCHOOL TABLE
+```{r}
+
+#Drop Columns
+school <- school %>%
+  dplyr::select(contains("County"), 
+                contains("TestSubject"),
+                contains("Count of Students Expected to Test"),
+                contains("CountMetStandard")) %>%
+  #Drop Rows
+  filter(str_detect(`TestSubject`,"Science")) %>%
+  #Create New Var: percent of science students (in all) grades per county meeting the required standards
+  mutate(percent_science = (`CountMetStandard`/`Count of Students Expected to Test`)*100) %>%
+  drop_na(percent_science)
+
+#Create new var: avg percent of science students (in all) grades per county meeting the required standards
+summarise_county <- school %>% 
+  group_by(County) %>%
+  summarise(mean_percent_science=mean(percent_science))
+
+#Create new var: avg percent of science students (in all) grades in state meeting the required standards
+summarise_state <- school %>% 
+  group_by(TestSubject) %>%
+  summarise(mean_percent_science=mean(percent_science))
+
+#Create new var: which is higher, county or state?
+summarise_county <- summarise_county %>%
+  mutate(high_low = mean_percent_science - summarise_state$mean_percent_science)
+
+```
+\
+
+#### 5. JOIN MAP AND TABLE
+```{r}
+
+map <- map %>%
+  left_join(.,
+            summarise_county,
+            by = c("COUNTYLABE" = "County"))
+
+```
+\
+
+#### 6. VISUALIZE THE MAP
+```{r}
+
+tmap_mode("plot")
+tm_shape(map) +
+  tm_polygons(col="high_low",
+              midpoint=0)
+  
+
+```
+\
+
+#### 7. SAVE RESULT TO GEODATABASE
+```{r}
+
+#Write geopackage
+map %>%
+  #write shape to new geopackage
+  st_write(., "C:/Users/USER/Documents/casa/gis/week2/week2_data/export.gpkg", 
+           "school_washington", 
+           delete_layer = TRUE)
+
+#Connect into database
+con <- dbConnect(RSQLite::SQLite(),dbname="export.gpkg")
+
+#See inside database
+con %>% 
+  dbListTables()
+
+#Add csv into geopackage
+con %>%
+  dbWriteTable(.,
+               "summarise_county.csv",
+               summarise_county,
+               overwrite=TRUE)
+
+#Disconnect from geopackage
+con %>% 
+  dbDisconnect()
+
+```
+
