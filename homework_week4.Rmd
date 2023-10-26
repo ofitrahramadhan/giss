@@ -25,28 +25,18 @@ Hello everyone! This work would be dedicated to the practical 4 of GIS class whi
 -------------------------------------------------------------------------------------------------
 
 **As for the steps in answering the goals, we can see them below:**\
-1. Setting the Directory\
-2. Load Libraries\
-3. Import and Manipulate Data\
-4. Plot the Map\
-5. Descriptive Statistics\
-6. Save the Output to the Geodatabase
+1. Load Libraries\
+2. Import and Manipulate Data\
+3. Plot the Map\
+4. Descriptive Statistics\
+5. Save the Output to the Geodatabase
 
 
 -------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------
 
 
-### **1. SETTING THE DIRECTORY**
-```{r directory, echo=TRUE}
-
-# place for accessing data
-data_week4 <- "D:/0. Master/Data/giss/week4"
-
-```
--------------------------------------------------------------------------------------------------
-
-### **2. LOAD LIBRARIES**
+### **1. LOAD LIBRARIES**
 ```{r library, echo=TRUE}
 
 library(tidyverse) #data wrangling
@@ -56,22 +46,27 @@ library(tmap) #spatial data visualization
 library(ggplot2) #data visualization
 library(plotly) #interactive histogram
 library(RSQLite) #for creating geodatabase
+library(here) 
 
 ```
+
 -------------------------------------------------------------------------------------------------
 
-### **3. IMPORT AND MANIPULATE DATA**
+### **2. IMPORT AND MANIPULATE DATA**
 ```{r data, echo=TRUE}
 
 #import global inequality index (gii)
-world_gii <- read_csv("D:/0. Master/Data/giss/week4/HDR21-22_Composite_indices_complete_time_series.csv") %>%
+world_gii <- read_csv2(here("data/week4","HDR21-22_Composite_indices_complete_time_series.csv")) %>%
   #select only necessary columns
-  dplyr::select(c("iso3", "country", "region", "gii_2010", "gii_2019")) %>%
+  dplyr::select(c("iso3", "country", "region", "gii_2010", "gii_2019"))
+#change column type as numeric
+world_gii$gii_2010 <- as.numeric(world_gii$gii_2010)
+world_gii$gii_2019 <- as.numeric(world_gii$gii_2019)
   #create new column called delta_gii (difference of gii between 2010 and 2019)
-  dplyr::mutate(delta_gii = gii_2019 - gii_2010)
+world_gii <- world_gii %>% dplyr::mutate(delta_gii = gii_2019 - gii_2010)
 
 #import world map
-world_map <- st_read("D:/0. Master/Data/giss/week4/World_Countries_Generalized.gdb") %>%
+world_map <- st_read(here("data/week4", "World_Countries_Generalized.gdb")) %>%
   #convert iso2 column to become iso3 (to make it identical with world_gii table)
   dplyr::mutate(iso3 = countrycode(ISO, origin='iso2c', destination='iso3c'), .before=ISO) %>%
   #join world_map and world_gii by - iso3
@@ -87,9 +82,10 @@ world_map <- st_read("D:/0. Master/Data/giss/week4/World_Countries_Generalized.g
   ))
   
 ```
+
 -------------------------------------------------------------------------------------------------
 
-### **4. PLOT THE MAP**
+### **3. PLOT THE MAP**
 ```{r map, echo=TRUE}
 
 #plotting the map with tmap function
@@ -111,13 +107,14 @@ delta_gii_map <- tm_shape(world_map) +
 print(delta_gii_map)
 
 ```
+
 -------------------------------------------------------------------------------------------------
 
-### **5. DESCRIPTIVE STATISTICS**
+### **4. DESCRIPTIVE STATISTICS**
 ```{r echo=TRUE}
 
 ##Create overlay histograms with plotly
-histogram_gii <- plot_ly(world_map) %>%
+plot_ly(world_map) %>%
   add_histogram(x = ~gii_2010, name = 'gii_2010', opacity = 0.5) %>%
   add_histogram(x = ~gii_2019, name = 'gii_2019', opacity = 0.5) %>%
   layout(
@@ -125,13 +122,13 @@ histogram_gii <- plot_ly(world_map) %>%
     xaxis = list(title = "GII Index"),
     yaxis = list(title = "Frequency"),
     barmode = 'overlay')
-  
-print(histogram_gii)
+
 
 ```
+
 -------------------------------------------------------------------------------------------------
 
-### **6. SAVE THE OUTPUT TO THE GEODATABASE**
+### **5. SAVE THE OUTPUT TO THE GEODATABASE**
 ```{r echo=TRUE}
 
 #Write geopackage
