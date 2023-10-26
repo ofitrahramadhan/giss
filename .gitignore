@@ -9,6 +9,17 @@
 # User-specific files
 .Ruserdata
 .gpkg
+.csv
+.xlsx
+.tif
+.cpg
+.dbf
+.geojson
+.prj
+.shp
+.shx
+.xml
+.zip
 
 # Example code in package build process
 *-Ex.R
