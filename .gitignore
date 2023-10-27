@@ -7,17 +7,24 @@
 .RDataTmp
 
 # User-specific files
-.Ruserdata
-.gpkg
-.csv
-.xlsx
-.tif
 .cpg
+.csv
 .dbf
+.feather
+.geofather
 .geojson
+.geoparquet
+.gpkg
+.gzip
+.gz
+.parquet
 .prj
+.Ruserdata
 .shp
 .shx
+.tif
+.xlsx
+.xls
 .xml
 .zip
 

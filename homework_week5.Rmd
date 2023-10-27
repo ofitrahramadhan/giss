@@ -1,0 +1,38 @@
+---
+title: "HOMEWORK 5: MAP MAKING"
+author: "Fitrah Ramadhan"
+date: "2023-10-26"
+output: html_document
+---
+
+-------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------
+
+Hello everyone! This homework would be dedicated to the practical 5 of GIS class which mainly talk about the use of **map making**.
+
+-------------------------------------------------------------------------------------------------
+
+**Thus, the following goals are set for this homework:**\
+1. Fork the repository below you from the spreadsheet last week
+2. Run the code, editing it if required
+3. Create a map (you can use additional data if you wish)
+4. Submit a pull request to the original person
+
+-------------------------------------------------------------------------------------------------
+
+**To do this task, these following data are directed to use:**\
+1. [Global Gender Inequality Data](https://hdr.undp.org/data-center/documentation-and-downloads)\
+2. [World Map](https://hub.arcgis.com/datasets/2b93b06dc0dc4e809d3c8db5cb96ba69_0/explore)
+
+-------------------------------------------------------------------------------------------------
+
+**As for the steps in answering the goals, we can see them below:**\
+1. Load Libraries\
+2. Import and Manipulate Data\
+3. Plot the Map\
+4. Descriptive Statistics\
+5. Save the Output to the Geodatabase
+
+
+-------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------
